@@ -3,7 +3,7 @@ http_response_code(200);
 echo "OK";
 
 // اختبار بسيط جدًا
-$TOKEN = "7069425588:AAEPY8t51GF85-3MsICl5kChNcRzgRvWgjY";
+$TOKEN = "7069425588:AAGb4gYo8Jbmud0EP-vNBrbowLRtyMrFvVw";
 
 // اقرأ التحديث
 $input = file_get_contents("php://input");

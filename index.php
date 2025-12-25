@@ -1,11 +1,15 @@
 <?php
+// لازم نرجع 200 OK لتلجرام
 http_response_code(200);
 echo "OK";
 
-// اختبار بسيط جدًا
+// نجيب التوكن من Environment Variable
 $TOKEN = getenv("BOT_TOKEN");
+if (!$TOKEN) {
+    exit;
+}
 
-// اقرأ التحديث
+// نقرأ التحديث من تلجرام
 $input = file_get_contents("php://input");
 if (!$input) {
     exit;
@@ -17,18 +21,28 @@ if (!isset($update["message"])) {
 }
 
 $chat_id = $update["message"]["chat"]["id"];
-$text = $update["message"]["text"] ?? "no text";
+$text = $update["message"]["text"] ?? "";
 
-// رد
-$url = "https://api.telegram.org/bot$TOKEN/sendMessage";
-$data = [
-    "chat_id" => $chat_id,
-    "text" => "BOT OK ✅\nYou said: $text"
-];
+// رد بسيط
+if ($text === "/start") {
+    sendMessage($TOKEN, $chat_id, "✅ البوت شغال تمام!\n\nاكتب أي رسالة وهرد عليك.");
+} else {
+    sendMessage($TOKEN, $chat_id, "📩 انت كتبت:\n$text");
+}
 
-$ch = curl_init($url);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_exec($ch);
-curl_close($ch);
+// دالة الإرسال
+function sendMessage($token, $chat_id, $message) {
+    $url = "https://api.telegram.org/bot$token/sendMessage";
+
+    $data = [
+        "chat_id" => $chat_id,
+        "text" => $message
+    ];
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_exec($ch);
+    curl_close($ch);
+}

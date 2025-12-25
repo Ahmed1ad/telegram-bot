@@ -1,6 +1,5 @@
 <?php
 http_response_code(200);
-echo "OK";
 
 /* ========== CONFIG ========== */
 $TOKEN = getenv("BOT_TOKEN");
@@ -8,14 +7,15 @@ $ADMIN_ID = 1739124234;
 $COMMISSION = 0.10;
 
 /* ========== FILES ========== */
-$F = [
+$FILES = [
   "products"=>"products.json",
   "pending"=>"pending.json",
   "users"=>"users.json",
-  "orders"=>"orders.json"
+  "orders"=>"orders.json",
+  "ratings"=>"ratings.json"
 ];
 
-/* ========== HELPERS ========== */
+/* ========== FUNCTIONS ========== */
 function load($f){
   if(!file_exists($f)) file_put_contents($f,"[]");
   return json_decode(file_get_contents($f),true);
@@ -44,6 +44,19 @@ function sendPhotoMsg($id,$photo,$cap,$kb=null){
   curl_exec($ch); curl_close($ch);
 }
 
+/* ========== DASHBOARD (WEB) ========== */
+if ($_SERVER["REQUEST_METHOD"] === "GET") {
+  $users = load($FILES["users"]);
+  $products = load($FILES["products"]);
+  $orders = load($FILES["orders"]);
+
+  echo "<h2>Admin Dashboard</h2>";
+  echo "<p>👤 Users: ".count($users)."</p>";
+  echo "<p>📦 Products: ".count($products)."</p>";
+  echo "<p>🧾 Orders: ".count($orders)."</p>";
+  exit;
+}
+
 /* ========== UPDATE ========== */
 $update=json_decode(file_get_contents("php://input"),true);
 if(!$update) exit;
@@ -55,100 +68,85 @@ if(isset($update["message"])){
   $id=$m["chat"]["id"];
   $text=$m["text"]??"";
 
-  $users=load($F["users"]);
+  $users=load($FILES["users"]);
   if(!isset($users[$id])){
-    $users[$id]=["wallet"=>0,"role"=>"user"];
-    save($F["users"],$users);
+    $users[$id]=["wallet"=>0,"premium"=>false];
+    save($FILES["users"],$users);
   }
 
-  /* ===== START ===== */
+  /* START */
   if($text=="/start"){
     send($id,
 "🛒 <b>Marketplace Bot</b>
 
 ✨ بيع واشتري بسهولة
+💰 عمولة عادلة
 🔐 تواصل آمن
-💰 نظام عمولة شفاف
 
-اختر من الأوامر 👇
-
-/shop – تصفح المنتجات
+الأوامر:
+/shop – تصفح
 /add – إضافة منتج
 /balance – محفظتي");
     exit;
   }
 
-  /* ===== BALANCE ===== */
+  /* BALANCE */
   if($text=="/balance"){
-    send($id,"💰 <b>رصيدك الحالي:</b> {$users[$id]['wallet']}");
+    send($id,"💰 <b>رصيدك:</b> {$users[$id]['wallet']}");
     exit;
   }
 
-  /* ===== ADD PRODUCT ===== */
+  /* ADD */
   if($text=="/add"){
-    send($id,
-"➕ <b>إضافة منتج</b>
-
-أرسل البيانات بهذا الشكل:
-<code>الاسم | السعر | الوصف</code>
-
-ثم أرسل صورة المنتج 📸");
+    send($id,"📦 أرسل المنتج:\n<code>الاسم | السعر | الوصف</code>");
     exit;
   }
 
-  /* ===== PRODUCT FORMAT ===== */
+  /* PRODUCT FORMAT */
   if(substr_count($text,"|")==2){
     [$name,$price,$desc]=array_map("trim",explode("|",$text));
-    $pending=load($F["pending"]);
+    $pending=load($FILES["pending"]);
     $pid=time();
     $pending[]=[
-      "id"=>$pid,
-      "seller"=>$id,
-      "name"=>$name,
-      "price"=>$price,
-      "desc"=>$desc,
-      "photo"=>null
+      "id"=>$pid,"seller"=>$id,
+      "name"=>$name,"price"=>$price,
+      "desc"=>$desc,"photo"=>null
     ];
-    save($F["pending"],$pending);
+    save($FILES["pending"],$pending);
 
-    send($id,"🕒 تم إرسال المنتج للمراجعة، أرسل الصورة الآن");
+    send($id,"🖼 أرسل صورة المنتج");
 
-    // 🔔 إشعار الأدمن
-    send($GLOBALS["ADMIN_ID"],
-"🆕 <b>منتج جديد للمراجعة</b>
+    send($ADMIN_ID,
+"🆕 <b>منتج جديد</b>
 📦 $name
 💰 $price
-👤 Seller ID: <code>$id</code>
-
-للموافقة:
+👤 Seller: <code>$id</code>
 /approve $pid");
 
     exit;
   }
 
-  /* ===== PRODUCT PHOTO ===== */
+  /* PHOTO */
   if(isset($m["photo"])){
-    $pending=load($F["pending"]);
+    $pending=load($FILES["pending"]);
     $last=array_key_last($pending);
-    if(isset($pending[$last]) && $pending[$last]["seller"]==$id){
+    if($pending[$last]["seller"]==$id){
       $pending[$last]["photo"]=$m["photo"][0]["file_id"];
-      save($F["pending"],$pending);
-      send($id,"📸 تم حفظ الصورة – في انتظار موافقة الإدارة");
+      save($FILES["pending"],$pending);
+      send($id,"⏳ في انتظار موافقة الإدارة");
     }
     exit;
   }
 
-  /* ===== SHOP ===== */
+  /* SHOP */
   if($text=="/shop"){
-    $products=load($F["products"]);
-    if(!$products){ send($id,"📭 لا توجد منتجات حالياً"); exit; }
+    $products=load($FILES["products"]);
+    if(!$products){ send($id,"📭 لا توجد منتجات"); exit; }
 
     foreach($products as $p){
       $kb=["inline_keyboard"=>[
-        [
-          ["text"=>"🛒 شراء","callback_data"=>"buy_".$p["id"]],
-          ["text"=>"💬 تواصل","callback_data"=>"chat_".$p["id"]]
-        ]
+        [["text"=>"🛒 شراء","callback_data"=>"buy_".$p["id"]],
+         ["text"=>"💬 تواصل","callback_data"=>"chat_".$p["id"]]]
       ]];
       sendPhotoMsg($id,$p["photo"],
 "📦 <b>{$p['name']}</b>
@@ -158,18 +156,18 @@ if(isset($update["message"])){
     exit;
   }
 
-  /* ===== ADMIN APPROVE ===== */
+  /* ADMIN APPROVE */
   if($id==$ADMIN_ID && strpos($text,"/approve")===0){
-    $pid=trim(explode(" ",$text)[1]);
-    $pending=load($F["pending"]);
+    $pid=explode(" ",$text)[1];
+    $pending=load($FILES["pending"]);
     foreach($pending as $k=>$p){
       if($p["id"]==$pid){
-        $products=load($F["products"]);
+        $products=load($FILES["products"]);
         $products[]=$p;
-        save($F["products"],$products);
+        save($FILES["products"],$products);
         unset($pending[$k]);
-        save($F["pending"],array_values($pending));
-        send($p["seller"],"🎉 تم قبول منتجك ونشره في المتجر");
+        save($FILES["pending"],array_values($pending));
+        send($p["seller"],"🎉 تم قبول منتجك");
       }
     }
     exit;
@@ -183,39 +181,39 @@ if(isset($update["callback_query"])){
   $id=$cb["from"]["id"];
   $data=$cb["data"];
 
-  /* ===== BUY ===== */
+  /* BUY */
   if(strpos($data,"buy_")===0){
     $pid=str_replace("buy_","",$data);
-    $products=load($F["products"]);
-    $users=load($F["users"]);
+    $products=load($FILES["products"]);
+    $users=load($FILES["users"]);
+    $orders=load($FILES["orders"]);
 
     foreach($products as $p){
       if($p["id"]==$pid){
         $fee=$p["price"]*$COMMISSION;
-        $sellerAmount=$p["price"]-$fee;
-
-        $users[$p["seller"]]["wallet"]+=$sellerAmount;
+        $users[$p["seller"]]["wallet"]+=($p["price"]-$fee);
         $users[$ADMIN_ID]["wallet"]+=$fee;
-        save($F["users"],$users);
+        save($FILES["users"],$users);
 
-        // إشعارات
-        send($id,"✅ <b>تم إنشاء الطلب</b>\nسيتم التواصل مع البائع");
-        send($p["seller"],"📦 <b>تم بيع منتجك:</b> {$p['name']}");
-        send($ADMIN_ID,
-"💰 <b>طلب جديد</b>
-📦 {$p['name']}
-💵 السعر: {$p['price']}
-👤 Seller: {$p['seller']}
-🧾 عمولة: $fee");
+        $orders[]=[
+          "product"=>$pid,
+          "buyer"=>$id,
+          "seller"=>$p["seller"],
+          "status"=>"pending"
+        ];
+        save($FILES["orders"],$orders);
 
+        send($id,"✅ تم إنشاء الطلب");
+        send($p["seller"],"📦 تم بيع منتجك");
+        send($ADMIN_ID,"💰 عملية بيع جديدة – عمولة $fee");
       }
     }
     exit;
   }
 
-  /* ===== CHAT ===== */
+  /* CHAT */
   if(strpos($data,"chat_")===0){
-    send($id,"🔐 التواصل يتم داخل البوت بدون كشف أي بيانات شخصية");
+    send($id,"🔐 التواصل يتم داخل البوت بدون كشف هوية");
     exit;
   }
 }

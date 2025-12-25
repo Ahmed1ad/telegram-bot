@@ -1,6 +1,6 @@
 <?php
-ini_set('display_errors', 0);
-error_reporting(0);
+http_response_code(200);
+echo "OK";
 
 $TOKEN = "7069425588:AAEPY8t51GF85-3MsICl5kChNcRzgRvWgjY";
 $ADMIN_ID = 1739124234;
@@ -138,3 +138,7 @@ if (isset($update["callback_query"])) {
 • حماية من السبام");
     }
 }
+
+<?php
+http_response_code(200);
+echo "OK";

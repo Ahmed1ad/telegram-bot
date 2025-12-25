@@ -3,7 +3,7 @@ http_response_code(200);
 echo "OK";
 
 $TOKEN = getenv("BOT_TOKEN");
-$ADMIN_ID = 123456789; // ← حط ID بتاعك
+$ADMIN_ID = 1739124234; // ← حط ID بتاعك
 $COMMISSION = 0.10; // 10%
 
 // ملفات البيانات

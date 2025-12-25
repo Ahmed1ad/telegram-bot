@@ -4,7 +4,7 @@ http_response_code(200);
 echo "OK";
 
 // توكن البوت
-$TOKEN = "PUT_YOUR_BOT_TOKEN_HERE";
+$TOKEN = "7069425588:AAEPY8t51GF85-3MsICl5kChNcRzgRvWgjY";
 
 // استقبال التحديث
 $update = json_decode(file_get_contents("php://input"), true);

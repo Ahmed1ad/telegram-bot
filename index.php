@@ -2,28 +2,28 @@
 http_response_code(200);
 date_default_timezone_set("Africa/Cairo");
 
-/* ========= CONFIG ========= */
-$BOT_TOKEN = getenv("BOT_TOKEN");
+/* ========== CONFIG ========== */
+$BOT_TOKEN   = getenv("BOT_TOKEN");
 $DASH_SECRET = "SUPER_ADMIN_2025";
 
-/* ========= FILES ========= */
+/* ========== FILES ========== */
 $CONTENT = "content.json";
 $SCHEDULE = "schedule.json";
 $TARGETS = "targets.json";
 $LOGS = "publish_logs.json";
 
-/* ========= HELPERS ========= */
-function load($f){
+/* ========== HELPERS ========== */
+function loadData($f){
     if(!file_exists($f)) file_put_contents($f,"[]");
     return json_decode(file_get_contents($f), true);
 }
-function save($f,$d){
+function saveData($f,$d){
     file_put_contents($f, json_encode($d, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));
 }
-function sendMsg($chat,$text){
+function sendTG($chat,$text){
     global $BOT_TOKEN;
     @file_get_contents(
-        "https://api.telegram.org/bot$BOT_TOKEN/sendMessage?" .
+        "https://api.telegram.org/bot$BOT_TOKEN/sendMessage?".
         http_build_query([
             "chat_id"=>$chat,
             "text"=>$text,
@@ -32,13 +32,15 @@ function sendMsg($chat,$text){
     );
 }
 
-/* ========= DASHBOARD (GET + POST) ========= */
+/* =========================================================
+   DASHBOARD (GET + POST) – حديثة وبلا صفحة بيضا
+========================================================= */
 if (isset($_GET["admin"]) && $_GET["admin"] === $DASH_SECRET) {
 
-    $content  = load($CONTENT);
-    $schedule = load($SCHEDULE);
+    $content  = loadData($CONTENT);
+    $schedule = loadData($SCHEDULE);
 
-    /* HANDLE POSTS */
+    /* ---------- HANDLE POST ---------- */
     if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         if (isset($_POST["add_content"])) {
@@ -46,7 +48,7 @@ if (isset($_GET["admin"]) && $_GET["admin"] === $DASH_SECRET) {
                 "id" => time(),
                 "text" => trim($_POST["text"])
             ];
-            save($CONTENT, $content);
+            saveData($CONTENT, $content);
         }
 
         if (isset($_POST["add_schedule"])) {
@@ -59,63 +61,71 @@ if (isset($_GET["admin"]) && $_GET["admin"] === $DASH_SECRET) {
                 "date" => $_POST["date"] ?? null,
                 "last_run" => ""
             ];
-            save($SCHEDULE, $schedule);
+            saveData($SCHEDULE, $schedule);
         }
     }
 
-    /* DASHBOARD UI */
+    /* ---------- UI ---------- */
     echo "<!DOCTYPE html><html><head><meta charset='UTF-8'>
-    <title>Dashboard</title>
+    <title>Islamic Auto Publisher</title>
     <style>
-    body{font-family:Arial;background:#0f172a;color:#fff;padding:20px}
-    textarea,input,select{width:100%;margin:6px 0;padding:8px}
-    button{padding:8px 16px;margin-top:8px;cursor:pointer}
-    .box{background:#111827;padding:15px;margin-bottom:20px;border-radius:8px}
+    body{font-family:Tahoma;background:#0f172a;color:#fff;padding:20px}
+    h2{margin-top:0}
+    textarea,input,select{width:100%;padding:8px;margin:6px 0}
+    button{padding:8px 16px;background:#22c55e;border:0;color:#000;cursor:pointer}
+    .box{background:#111827;padding:15px;margin-bottom:20px;border-radius:10px}
     </style></head><body>";
 
-    echo "<div class='box'><h2>📿 إضافة منشور</h2>
-    <form method='post'>
-        <textarea name='text' required></textarea>
-        <button name='add_content'>حفظ</button>
-    </form></div>";
+    echo "<div class='box'>
+        <h2>📿 إضافة منشور</h2>
+        <form method='post'>
+            <textarea name='text' rows='5' required></textarea>
+            <button name='add_content'>حفظ المنشور</button>
+        </form>
+    </div>";
 
-    echo "<div class='box'><h2>⏰ جدولة منشور</h2>
-    <form method='post'>
-        <select name='content_id'>";
+    echo "<div class='box'>
+        <h2>⏰ جدولة منشور</h2>
+        <form method='post'>
+            <select name='content_id'>";
     foreach($content as $c){
-        echo "<option value='{$c['id']}'>" .
-             htmlspecialchars(substr($c["text"],0,40)) .
+        echo "<option value='{$c['id']}'>".
+             htmlspecialchars(substr($c["text"],0,40)).
              "</option>";
     }
     echo "</select>
 
-        <select name='type'>
-            <option value='daily'>يومي</option>
-            <option value='weekly'>أسبوعي</option>
-            <option value='monthly'>شهري</option>
-            <option value='once'>مرة واحدة</option>
-        </select>
+            <select name='type'>
+                <option value='daily'>يومي</option>
+                <option value='weekly'>أسبوعي</option>
+                <option value='monthly'>شهري</option>
+                <option value='once'>مرة واحدة</option>
+            </select>
 
-        <input type='time' name='time' required>
-        <input type='number' name='day' placeholder='يوم الأسبوع / الشهر'>
-        <input type='date' name='date'>
-        <button name='add_schedule'>حفظ الجدولة</button>
-    </form></div>";
+            <input type='time' name='time' required>
+            <input type='number' name='day' placeholder='يوم الأسبوع / الشهر'>
+            <input type='date' name='date'>
+            <button name='add_schedule'>حفظ الجدولة</button>
+        </form>
+    </div>";
 
     echo "</body></html>";
     exit;
 }
 
-/* ========= SCHEDULER ========= */
+/* =========================================================
+   SCHEDULER – النشر التلقائي
+   (يعمل مع Cron / Ping كل دقيقة)
+========================================================= */
 $nowTime  = date("H:i");
 $today    = date("Y-m-d");
-$dayWeek  = date("w");
-$dayMonth = date("j");
+$dayWeek  = date("w"); // 0-6
+$dayMonth = date("j"); // 1-31
 
-$content  = load($CONTENT);
-$schedule = load($SCHEDULE);
-$targets  = load($TARGETS);
-$logs     = load($LOGS);
+$content  = loadData($CONTENT);
+$schedule = loadData($SCHEDULE);
+$targets  = loadData($TARGETS);
+$logs     = loadData($LOGS);
 
 foreach ($schedule as &$s) {
 
@@ -123,7 +133,6 @@ foreach ($schedule as &$s) {
     if ($s["last_run"] === $today) continue;
 
     $run = false;
-
     if ($s["type"] === "daily") $run = true;
     if ($s["type"] === "weekly"  && $s["day"] == $dayWeek)  $run = true;
     if ($s["type"] === "monthly" && $s["day"] == $dayMonth) $run = true;
@@ -134,39 +143,59 @@ foreach ($schedule as &$s) {
     foreach ($content as $c) {
         if ($c["id"] == $s["content_id"]) {
             foreach ($targets as $t) {
-                sendMsg($t, $c["text"]);
+                sendTG($t["chat_id"], $c["text"]);
             }
             $s["last_run"] = $today;
-            $logs[] = date("Y-m-d H:i") . " | Published schedule {$s['id']}";
+            $logs[] = date("Y-m-d H:i")." | Published schedule {$s['id']}";
         }
     }
 }
 
-save($SCHEDULE, $schedule);
-save($LOGS, $logs);
+saveData($SCHEDULE, $schedule);
+saveData($LOGS, $logs);
 
-/* ========= TELEGRAM UPDATES ========= */
+/* =========================================================
+   TELEGRAM UPDATES
+   – رسالة تفعيل للجروبات والقنوات
+========================================================= */
 $update = json_decode(file_get_contents("php://input"), true);
 if (!$update) exit;
 
-/* AUTO REGISTER GROUPS / CHANNELS */
-if (isset($update["my_chat_member"])) {
-    $chat_id = $update["my_chat_member"]["chat"]["id"];
-    $status  = $update["my_chat_member"]["new_chat_member"]["status"];
+/* ----- تفعيل الجروب / القناة ----- */
+if (isset($update["message"]) && isset($update["message"]["chat"])) {
 
-    if (in_array($status, ["administrator", "member"])) {
-        $targets = load($TARGETS);
-        if (!in_array($chat_id, $targets)) {
-            $targets[] = $chat_id;
-            save($TARGETS, $targets);
+    $chat = $update["message"]["chat"];
+    $chat_id = $chat["id"];
+    $type = $chat["type"];
+    $text = trim($update["message"]["text"] ?? "");
+
+    // تفعيل فقط في جروب أو قناة
+    if (in_array($type, ["group","supergroup","channel"]) && $text !== "") {
+
+        $targets = loadData($TARGETS);
+        $exists = false;
+
+        foreach($targets as $t){
+            if($t["chat_id"] == $chat_id){
+                $exists = true;
+                break;
+            }
+        }
+
+        if(!$exists){
+            $targets[] = [
+                "chat_id" => $chat_id,
+                "activated_at" => date("Y-m-d H:i")
+            ];
+            saveData($TARGETS, $targets);
         }
     }
 }
 
-/* SIMPLE BOT RESPONSE */
-if (isset($update["message"])) {
-    sendMsg(
+/* ----- رد بسيط في الخاص ----- */
+if (isset($update["message"]) && $update["message"]["chat"]["type"]=="private") {
+    sendTG(
         $update["message"]["chat"]["id"],
-        "🤖 البوت يعمل تلقائيًا\n⏰ النشر يتم حسب الجدولة"
+        "🤖 البوت يعمل تلقائيًا\n📢 أضفني مشرف بالقناة أو الجروب ثم أرسل أي رسالة للتفعيل"
     );
 }

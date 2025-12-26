@@ -2,17 +2,17 @@
 http_response_code(200);
 date_default_timezone_set("Africa/Cairo");
 
-/* ========== CONFIG ========== */
+/* ================= CONFIG ================= */
 $BOT_TOKEN   = getenv("BOT_TOKEN");
 $DASH_SECRET = "SUPER_ADMIN_2025";
 
-/* ========== FILES ========== */
+/* ================= FILES ================= */
 $CONTENT = "content.json";
 $SCHEDULE = "schedule.json";
 $TARGETS = "targets.json";
 $LOGS = "publish_logs.json";
 
-/* ========== HELPERS ========== */
+/* ================= HELPERS ================= */
 function loadData($f){
     if(!file_exists($f)) file_put_contents($f,"[]");
     return json_decode(file_get_contents($f), true);
@@ -33,14 +33,14 @@ function sendTG($chat,$text){
 }
 
 /* =========================================================
-   DASHBOARD (GET + POST) – حديثة وبلا صفحة بيضا
+   DASHBOARD (GET + POST) – ثابتة بدون صفحة بيضا
 ========================================================= */
 if (isset($_GET["admin"]) && $_GET["admin"] === $DASH_SECRET) {
 
     $content  = loadData($CONTENT);
     $schedule = loadData($SCHEDULE);
 
-    /* ---------- HANDLE POST ---------- */
+    /* -------- HANDLE POST -------- */
     if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         if (isset($_POST["add_content"])) {
@@ -65,9 +65,9 @@ if (isset($_GET["admin"]) && $_GET["admin"] === $DASH_SECRET) {
         }
     }
 
-    /* ---------- UI ---------- */
+    /* -------- UI -------- */
     echo "<!DOCTYPE html><html><head><meta charset='UTF-8'>
-    <title>Islamic Auto Publisher</title>
+    <title>Auto Publisher Dashboard</title>
     <style>
     body{font-family:Tahoma;background:#0f172a;color:#fff;padding:20px}
     h2{margin-top:0}
@@ -115,7 +115,7 @@ if (isset($_GET["admin"]) && $_GET["admin"] === $DASH_SECRET) {
 
 /* =========================================================
    SCHEDULER – النشر التلقائي
-   (يعمل مع Cron / Ping كل دقيقة)
+   (يحتاج Cron / Ping كل دقيقة)
 ========================================================= */
 $nowTime  = date("H:i");
 $today    = date("Y-m-d");
@@ -156,46 +156,45 @@ saveData($LOGS, $logs);
 
 /* =========================================================
    TELEGRAM UPDATES
-   – رسالة تفعيل للجروبات والقنوات
+   – تسجيل الجروبات والقنوات تلقائيًا
 ========================================================= */
 $update = json_decode(file_get_contents("php://input"), true);
 if (!$update) exit;
 
-/* ----- تفعيل الجروب / القناة ----- */
-if (isset($update["message"]) && isset($update["message"]["chat"])) {
+/* ---- أي رسالة في جروب/قناة = تسجيل ---- */
+if (isset($update["message"])) {
 
     $chat = $update["message"]["chat"];
     $chat_id = $chat["id"];
     $type = $chat["type"];
-    $text = trim($update["message"]["text"] ?? "");
 
-    // تفعيل فقط في جروب أو قناة
-    if (in_array($type, ["group","supergroup","channel"]) && $text !== "") {
+    if (in_array($type, ["group","supergroup","channel"])) {
 
         $targets = loadData($TARGETS);
         $exists = false;
 
-        foreach($targets as $t){
-            if($t["chat_id"] == $chat_id){
+        foreach ($targets as $t) {
+            if ($t["chat_id"] == $chat_id) {
                 $exists = true;
                 break;
             }
         }
 
-        if(!$exists){
+        if (!$exists) {
             $targets[] = [
                 "chat_id" => $chat_id,
-                "activated_at" => date("Y-m-d H:i")
+                "type" => $type,
+                "activated_at" => date("Y-m-d H:i:s")
             ];
             saveData($TARGETS, $targets);
         }
     }
 }
 
-/* ----- رد بسيط في الخاص ----- */
-if (isset($update["message"]) && $update["message"]["chat"]["type"]=="private") {
+/* ---- رد في الخاص فقط ---- */
+if (isset($update["message"]) && $update["message"]["chat"]["type"] === "private") {
     sendTG(
         $update["message"]["chat"]["id"],
-        "🤖 البوت يعمل تلقائيًا\n📢 أضفني مشرف بالقناة أو الجروب ثم أرسل أي رسالة للتفعيل"
+        "🤖 البوت يعمل تلقائيًا\n📢 أضفني مشرف في جروب أو قناة وسيتم التفعيل تلقائيًا"
     );
 }

@@ -2,17 +2,12 @@
 http_response_code(200);
 
 /* ================= CONFIG ================= */
-define("BOT_TOKEN", getenv("BOT_TOKEN"));
-define("ADMIN_ID", 1739124234);
-define("DASH_SECRET", "SUPER_ADMIN_2025");
+$BOT_TOKEN = getenv("BOT_TOKEN");
+$ADMIN_ID = 1739124234;
+$ADMIN_EMAIL = "ad45821765@gmail.com";
+$DASH_SECRET = "SUPER_ADMIN_2025";
 
-/* SMTP */
-define("SMTP_HOST","smtp.gmail.com");
-define("SMTP_USER","ad45821765@gmail.com");
-define("SMTP_PASS","bgupebqkdhnwwemo");
-define("ADMIN_EMAIL","ad45821765@gmail.com");
-
-/* FILES */
+/* ================= FILES ================= */
 $F = [
  "users"=>"users.json",
  "products"=>"products.json",
@@ -23,98 +18,125 @@ $F = [
 ];
 
 /* ================= HELPERS ================= */
-function load($f){ if(!file_exists($f)) file_put_contents($f,"[]"); return json_decode(file_get_contents($f),true); }
-function save($f,$d){ file_put_contents($f,json_encode($d,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE)); }
-function logEvent($t){ $l=load("logs.json"); $l[]=date("Y-m-d H:i:s")." | ".$t; save("logs.json",$l); }
-
-function send($id,$txt,$kb=null){
- $d=["chat_id"=>$id,"text"=>$txt,"parse_mode"=>"HTML"];
- if($kb) $d["reply_markup"]=json_encode($kb);
- file_get_contents("https://api.telegram.org/bot".BOT_TOKEN."/sendMessage?".http_build_query($d));
+function load($f){
+ if(!file_exists($f)) file_put_contents($f,"[]");
+ return json_decode(file_get_contents($f),true);
 }
-
+function save($f,$d){
+ file_put_contents($f,json_encode($d,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));
+}
+function logEvent($t){
+ $l=load("logs.json");
+ $l[]=date("Y-m-d H:i:s")." | ".$t;
+ save("logs.json",$l);
+}
+function send($id,$txt,$kb=null){
+ global $BOT_TOKEN;
+ $data=["chat_id"=>$id,"text"=>$txt,"parse_mode"=>"HTML"];
+ if($kb) $data["reply_markup"]=json_encode($kb);
+ file_get_contents("https://api.telegram.org/bot$BOT_TOKEN/sendMessage?".http_build_query($data));
+}
 function adminOnly($id){
- if($id!=ADMIN_ID){ send($id,"❌ هذا الأمر مخصص للإدارة فقط"); return false; }
+ global $ADMIN_ID;
+ if($id!=$ADMIN_ID){
+  send($id,"❌ هذا الأمر مخصص للإدارة فقط");
+  return false;
+ }
  return true;
 }
-
-/* ================= EMAIL (SMTP) ================= */
-use PHPMailer\PHPMailer\PHPMailer;
-require_once __DIR__."/PHPMailer.php";
-require_once __DIR__."/SMTP.php";
-require_once __DIR__."/Exception.php";
-
-function sendAdminEmail($subject,$body){
- $m=new PHPMailer(true);
- $m->isSMTP();
- $m->Host=SMTP_HOST;
- $m->SMTPAuth=true;
- $m->Username=SMTP_USER;
- $m->Password=SMTP_PASS;
- $m->SMTPSecure="tls";
- $m->Port=587;
- $m->setFrom(SMTP_USER,"Marketplace Bot");
- $m->addAddress(ADMIN_EMAIL);
- $m->isHTML(true);
- $m->Subject=$subject;
- $m->Body=$body;
- $m->send();
+function sendAdminEmail($subject,$message){
+ global $ADMIN_EMAIL;
+ $headers="From: Marketplace Bot <no-reply@railway.app>\r\n";
+ $headers.="Content-Type: text/html; charset=UTF-8\r\n";
+ @mail($ADMIN_EMAIL,$subject,$message,$headers);
 }
 
-/* ================= DASHBOARD ================= */
+/* ================= DASHBOARD (WEB) ================= */
 if($_SERVER["REQUEST_METHOD"]==="GET"){
- if(!isset($_GET["admin"])||$_GET["admin"]!==DASH_SECRET) exit("Access Denied");
-
+ if(!isset($_GET["admin"]) || $_GET["admin"]!==$DASH_SECRET){
+  exit("Access Denied");
+ }
  $users=load($F["users"]);
  $orders=load($F["orders"]);
- echo "<h1>Admin Dashboard</h1>";
+ echo "<h2>Admin Dashboard</h2>";
  echo "<p>Users: ".count($users)."</p>";
  echo "<p>Orders: ".count($orders)."</p>";
  exit;
 }
 
 /* ================= UPDATE ================= */
-$u=json_decode(file_get_contents("php://input"),true);
-if(!$u) exit;
+$update=json_decode(file_get_contents("php://input"),true);
+if(!$update) exit;
+
+/* ================= MENU ================= */
+$menu=[
+ "keyboard"=>[
+  ["🛍 المنتجات","➕ إضافة منتج"],
+  ["💰 محفظتي","➕ إضافة رصيد"],
+  ["👮‍♂️ أوامر الإدارة"],
+  ["ℹ️ المساعدة"]
+ ],
+ "resize_keyboard"=>true
+];
 
 /* ================= MESSAGE ================= */
-if(isset($u["message"])){
- $m=$u["message"];
+if(isset($update["message"])){
+
+ $m=$update["message"];
  $id=$m["chat"]["id"];
  $text=$m["text"]??"";
- $users=load($F["users"]);
+ $name=$m["from"]["first_name"]??"";
 
+ $users=load($F["users"]);
  if(!isset($users[$id])){
-  $users[$id]=["wallet"=>0,"name"=>$m["from"]["first_name"]];
+  $users[$id]=["wallet"=>0,"name"=>$name];
   save($F["users"],$users);
  }
 
- /* MENU */
+ /* START */
  if($text=="/start"){
-  send($id,"🛒 <b>Marketplace Bot</b>",[
-   "keyboard"=>[
-    ["🛍 المنتجات","➕ إضافة منتج"],
-    ["💰 محفظتي","➕ إضافة رصيد"],
-    ["👮‍♂️ أوامر الإدارة"],
-    ["ℹ️ المساعدة"]
-   ],
-   "resize_keyboard"=>true
-  ]);
+  send($id,"🛒 <b>Marketplace Bot</b>\nاختر من القائمة 👇",$menu);
+  exit;
+ }
+
+ /* WALLET */
+ if($text=="💰 محفظتي"){
+  send($id,"💰 رصيدك: <b>{$users[$id]['wallet']}</b>");
+  exit;
  }
 
  /* TOPUP */
+ if($text=="➕ إضافة رصيد"){
+  send($id,"💳 أرسل:\n<code>/topup 100</code>");
+  exit;
+ }
+
  if(strpos($text,"/topup")===0){
   $amt=intval(explode(" ",$text)[1]??0);
   if($amt<=0){ send($id,"❌ مبلغ غير صحيح"); exit; }
 
-  $t=load($F["topups"]);
+  $topups=load($F["topups"]);
   $tid=time();
-  $t[]=["id"=>$tid,"user"=>$id,"amount"=>$amt,"status"=>"pending"];
-  save($F["topups"],$t);
+  $topups[]=["id"=>$tid,"user"=>$id,"amount"=>$amt,"status"=>"pending"];
+  save($F["topups"],$topups);
 
-  send(ADMIN_ID,"💳 طلب شحن جديد\nID:$tid\nUser:$id\nAmount:$amt\n/accept_topup $tid\n/reject_topup $tid");
-  sendAdminEmail("طلب شحن جديد","User:$id<br>Amount:$amt");
+  send($ADMIN_ID,
+"💳 طلب شحن جديد
+🆔 $tid
+👤 $id
+💰 $amt
+
+/accept_topup $tid
+/reject_topup $tid");
+
+  sendAdminEmail(
+   "طلب شحن جديد",
+   "User ID: $id<br>Amount: $amt"
+  );
+
   send($id,"⏳ تم إرسال طلب الشحن للإدارة");
+  logEvent("TOPUP REQUEST $id $amt");
+  exit;
  }
 
  /* ADMIN COMMANDS LIST */
@@ -124,44 +146,50 @@ if(isset($u["message"])){
 
 📊 لوحة التحكم
 📦 الطلبات
-💳 طلبات الشحن
-🧩 المنتجات المعلقة
-👤 المستخدمين
-💰 الأرباح");
+💳 طلبات الشحن");
+  exit;
  }
-}
 
-/* ================= ADMIN ACTIONS ================= */
-if(isset($u["message"])){
- $id=$u["message"]["chat"]["id"];
- $text=$u["message"]["text"]??"";
-
+ /* ADMIN: ACCEPT TOPUP */
  if(strpos($text,"/accept_topup")===0){
   if(!adminOnly($id)) exit;
-  $tid=intval(explode(" ",$text)[1]);
-  $t=load($F["topups"]);
+  $tid=intval(explode(" ",$text)[1]??0);
+  $topups=load($F["topups"]);
   $users=load($F["users"]);
-  foreach($t as &$r){
-   if($r["id"]==$tid && $r["status"]=="pending"){
-    $users[$r["user"]]["wallet"]+=$r["amount"];
-    $r["status"]="accepted";
+
+  foreach($topups as &$t){
+   if($t["id"]==$tid && $t["status"]=="pending"){
+    $users[$t["user"]]["wallet"]+=$t["amount"];
+    $t["status"]="accepted";
     save($F["users"],$users);
-    save($F["topups"],$t);
-    send($r["user"],"✅ تم شحن رصيدك {$r['amount']}");
+    save($F["topups"],$topups);
+    send($t["user"],"✅ تم شحن رصيدك {$t['amount']}");
+    logEvent("TOPUP ACCEPTED $tid");
    }
   }
+  exit;
  }
 
+ /* ADMIN: REJECT TOPUP */
  if(strpos($text,"/reject_topup")===0){
   if(!adminOnly($id)) exit;
-  $tid=intval(explode(" ",$text)[1]);
-  $t=load($F["topups"]);
-  foreach($t as &$r){
-   if($r["id"]==$tid){
-    $r["status"]="rejected";
-    save($F["topups"],$t);
-    send($r["user"],"❌ تم رفض طلب الشحن");
+  $tid=intval(explode(" ",$text)[1]??0);
+  $topups=load($F["topups"]);
+
+  foreach($topups as &$t){
+   if($t["id"]==$tid){
+    $t["status"]="rejected";
+    save($F["topups"],$topups);
+    send($t["user"],"❌ تم رفض طلب الشحن");
+    logEvent("TOPUP REJECTED $tid");
    }
   }
+  exit;
+ }
+
+ /* HELP */
+ if($text=="ℹ️ المساعدة"){
+  send($id,"ℹ️ استخدم القائمة للتنقل داخل البوت");
+  exit;
  }
 }

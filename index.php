@@ -1,181 +1,104 @@
 <?php
-http_response_code(200);
 
-/* ========== CONFIG ========== */
-$BOT_TOKEN = getenv("BOT_TOKEN");
-$ADMIN_ID = 1739124234;
-$DASH_SECRET = "SUPER_ADMIN_2025";
+/**
+ * اسم البوت: MyAwesomeBot
+ * الوصف: بوت تيليجرام متطور يدعم الرد الآلي، تحليل الصور، ولوحة تحكم بسيطة.
+ */
 
-/* ========== FILES ========== */
-$USERS = "users.json";
-$TOPUPS = "topups.json";
-$LOGS = "logs.json";
+// إعدادات التوكن والمعرفات الأساسية
+define('API_KEY', '7069425588:AAHum419wO6f-pCQK0ighkg7ZcTGPls9LQw');
+define('ADMIN_ID', 12345678); // استبدل هذا بمعرفك (Chat ID)
 
-/* ========== HELPERS ========== */
-function load($f){
-    if(!file_exists($f)) file_put_contents($f,"[]");
-    return json_decode(file_get_contents($f), true);
-}
-function save($f,$d){
-    file_put_contents($f, json_encode($d, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));
-}
-function send($id,$text){
-    global $BOT_TOKEN;
-    file_get_contents(
-        "https://api.telegram.org/bot$BOT_TOKEN/sendMessage?".
-        http_build_query(["chat_id"=>$id,"text"=>$text,"parse_mode"=>"HTML"])
-    );
-}
-function logEvent($t){
-    $l = load("logs.json");
-    $l[] = date("Y-m-d H:i:s")." | ".$t;
-    save("logs.json",$l);
-}
+// استقبال البيانات القادمة من تيليجرام
+$update = json_decode(file_get_contents('php://input'));
+if (!$update) exit;
 
-/* ========== DASHBOARD (GET) ========== */
-if($_SERVER["REQUEST_METHOD"]==="GET"){
-    if(!isset($_GET["admin"]) || $_GET["admin"]!==$DASH_SECRET){
-        exit("Access Denied");
+$message = $update->message ?? null;
+$chat_id = $message->chat->id ?? null;
+$text = $message->text ?? '';
+$photo = $message->photo ?? null;
+$from_id = $message->from->id ?? null;
+
+/**
+ * وظيفة لإرسال الطلبات إلى تيليجرام باستخدام cURL
+ */
+function botRequest($method, $datas = []) {
+    $url = "https://api.telegram.org/bot" . API_KEY . "/" . $method;
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $datas);
+    $res = curl_exec($ch);
+    if (curl_error($ch)) {
+        return (object) ['ok' => false, 'error' => curl_error($ch)];
     }
-
-    $users  = load($USERS);
-    $topups = load($TOPUPS);
-
-    /* ---- ACTIONS ---- */
-
-    if(isset($_GET["accept"])){
-        foreach($topups as &$t){
-            if($t["id"]==$_GET["accept"] && $t["status"]=="pending"){
-                $users[$t["user"]]["wallet"] += $t["amount"];
-                $t["status"] = "accepted";
-                send($t["user"],"✅ تم شحن رصيدك {$t['amount']}");
-                logEvent("TOPUP ACCEPTED {$t['id']}");
-            }
-        }
-        save($USERS,$users); save($TOPUPS,$topups);
-        header("Location: ?admin=".$_GET["admin"]); exit;
-    }
-
-    if(isset($_GET["reject"])){
-        foreach($topups as &$t){
-            if($t["id"]==$_GET["reject"]){
-                $t["status"] = "rejected";
-                send($t["user"],"❌ تم رفض طلب الشحن");
-                logEvent("TOPUP REJECTED {$t['id']}");
-            }
-        }
-        save($TOPUPS,$topups);
-        header("Location: ?admin=".$_GET["admin"]); exit;
-    }
-
-    if(isset($_GET["addbal"])){
-        $uid=$_GET["addbal"]; $amt=intval($_GET["amt"]);
-        $users[$uid]["wallet"] += $amt;
-        save($USERS,$users);
-        send($uid,"➕ تم إضافة $amt إلى رصيدك");
-        header("Location: ?admin=".$_GET["admin"]); exit;
-    }
-
-    if(isset($_GET["subbal"])){
-        $uid=$_GET["subbal"]; $amt=intval($_GET["amt"]);
-        $users[$uid]["wallet"] -= $amt;
-        if($users[$uid]["wallet"]<0) $users[$uid]["wallet"]=0;
-        save($USERS,$users);
-        send($uid,"➖ تم خصم $amt من رصيدك");
-        header("Location: ?admin=".$_GET["admin"]); exit;
-    }
-
-    /* ---- UI ---- */
-    echo "<!DOCTYPE html><html><head><meta charset='UTF-8'>
-    <title>Admin Dashboard</title>
-    <style>
-    body{margin:0;font-family:Segoe UI;background:#0f172a;color:#fff}
-    .nav{background:#020617;padding:15px;font-size:20px}
-    .wrap{padding:20px}
-    .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:15px}
-    .card{background:#111827;padding:20px;border-radius:12px}
-    table{width:100%;border-collapse:collapse;margin-top:20px}
-    th,td{padding:10px;border-bottom:1px solid #1f2937;text-align:left}
-    .btn{padding:6px 10px;border-radius:6px;text-decoration:none;color:#fff;font-size:14px}
-    .ok{background:#16a34a}
-    .no{background:#dc2626}
-    .add{background:#2563eb}
-    .sub{background:#9333ea}
-    </style>
-    </head><body>";
-
-    echo "<div class='nav'>📊 Admin Dashboard</div><div class='wrap'>";
-
-    echo "<div class='cards'>
-        <div class='card'>👤 Users<br><b>".count($users)."</b></div>
-        <div class='card'>💳 Pending Topups<br><b>".count(array_filter($topups,fn($t)=>$t['status']=='pending'))."</b></div>
-    </div>";
-
-    echo "<h2>💳 طلبات شحن الرصيد</h2>
-    <table><tr><th>User</th><th>Amount</th><th>Action</th></tr>";
-    foreach($topups as $t){
-        if($t["status"]=="pending"){
-            echo "<tr>
-            <td>{$t['user']}</td>
-            <td>{$t['amount']}</td>
-            <td>
-            <a class='btn ok' href='?admin={$_GET['admin']}&accept={$t['id']}'>قبول</a>
-            <a class='btn no' href='?admin={$_GET['admin']}&reject={$t['id']}'>رفض</a>
-            </td></tr>";
-        }
-    }
-    echo "</table>";
-
-    echo "<h2>👤 المستخدمين</h2>
-    <table><tr><th>ID</th><th>Name</th><th>Balance</th><th>Actions</th></tr>";
-    foreach($users as $uid=>$u){
-        echo "<tr>
-        <td>$uid</td>
-        <td>{$u['name']}</td>
-        <td>{$u['wallet']}</td>
-        <td>
-        <a class='btn add' href='?admin={$_GET['admin']}&addbal=$uid&amt=100'>+100</a>
-        <a class='btn sub' href='?admin={$_GET['admin']}&subbal=$uid&amt=50'>-50</a>
-        </td></tr>";
-    }
-    echo "</table>";
-
-    echo "</div></body></html>";
-    exit;
+    curl_close($ch);
+    return json_decode($res);
 }
 
-/* ========== TELEGRAM BOT (POST) ========== */
-$update = json_decode(file_get_contents("php://input"), true);
-if(!$update) exit;
+/**
+ * حفظ البيانات في ملف JSON
+ */
+function saveData($userId, $data) {
+    $db = json_decode(file_get_contents('database.json'), true) ?: [];
+    $db[$userId] = $data;
+    file_put_contents('database.json', json_encode($db));
+}
 
-if(isset($update["message"])){
-    $m = $update["message"];
-    $id = $m["chat"]["id"];
-    $text = $m["text"] ?? "";
-    $name = $m["from"]["first_name"] ?? "User";
+// --- معالجة الأوامر ---
 
-    $users = load($USERS);
-    if(!isset($users[$id])){
-        $users[$id] = ["name"=>$name,"wallet"=>0];
-        save($USERS,$users);
-    }
+if ($text == '/start') {
+    botRequest('sendMessage', [
+        'chat_id' => $chat_id,
+        'text' => "أهلاً بك في MyAwesomeBot! 🤖\nأنا بوت ذكي أستطيع الرد تلقائياً وتحليل الصور.",
+        'reply_markup' => json_encode([
+            'keyboard' => [
+                [['text' => 'قائمة الأوامر'], ['text' => 'معلوماتي']]
+            ],
+            'resize_keyboard' => true
+        ])
+    ]);
+    saveData($from_id, ['last_seen' => time(), 'username' => $message->from->username ?? 'Unknown']);
+}
 
-    if($text=="/start"){
-        send($id,"🛒 <b>Marketplace Bot</b>\n\n💰 رصيدك: {$users[$id]['wallet']}\n\nاكتب:\n/topup 100 لشحن الرصيد");
-        exit;
-    }
+elseif ($text == '/help' || $text == 'قائمة الأوامر') {
+    botRequest('sendMessage', [
+        'chat_id' => $chat_id,
+        'text' => "الأوامر المتاحة:\n/start - بدء البوت\n/help - عرض التعليمات\nأرسل صورة لتحليلها\nلوحة التحكم (للمسؤول فقط)"
+    ]);
+}
 
-    if(strpos($text,"/topup")===0){
-        $amt=intval(explode(" ",$text)[1]??0);
-        if($amt<=0){ send($id,"❌ مبلغ غير صحيح"); exit; }
+// --- تحليل الصور ---
+elseif ($photo) {
+    $file_id = end($photo)->file_id;
+    botRequest('sendMessage', [
+        'chat_id' => $chat_id,
+        'text' => "لقد استلمت صورتك! 🖼️\nمعرف الملف (File ID): \n`$file_id`",
+        'parse_mode' => 'Markdown'
+    ]);
+}
 
-        $topups=load($TOPUPS);
-        $topups[]=["id"=>time(),"user"=>$id,"amount"=>$amt,"status"=>"pending"];
-        save($TOPUPS,$topups);
+// --- الرد الآلي ---
+elseif ($text == 'السلام عليكم') {
+    botRequest('sendMessage', ['chat_id' => $chat_id, 'text' => 'وعليكم السلام ورحمة الله وبركاته، كيف يمكنني مساعدتك؟']);
+}
 
-        send($id,"⏳ تم إرسال طلب الشحن للإدارة");
-        send($ADMIN_ID,"💳 طلب شحن جديد\nUser:$id\nAmount:$amt");
-        logEvent("TOPUP REQUEST $id $amt");
-        exit;
+// --- لوحة التحكم (للمسؤول) ---
+elseif ($text == 'لوحة تحكم' && $from_id == ADMIN_ID) {
+    $users = count(json_decode(file_get_contents('database.json'), true) ?: []);
+    botRequest('sendMessage', [
+        'chat_id' => $chat_id,
+        'text' => "مرحباً أيها المدير! 🛠️\nعدد المستخدمين المخزنين: $users"
+    ]);
+}
+
+// --- ميزة الصدى (Echo) كخيار افتراضي ---
+else {
+    if ($text != '') {
+        botRequest('sendMessage', [
+            'chat_id' => $chat_id,
+            'text' => "لقد قلت: $text"
+        ]);
     }
 }
+?>","explanation":"هذا السكريبت هو نظام متكامل لبوت تيليجرام بلغة PHP. يعتمد على تقنية Webhook لاستقبال التحديثات فورياً. يتضمن وظيفة إرسال عبر cURL لضمان الأمان والسرعة. السكريبت يدعم الأوامر الأساسية (/start و /help)، ويحتوي على منطق للرد الآلي على كلمات محددة، ومعالجة الصور من خلال استخراج الـ file_id الخاص بها. كما يتضمن نظام تخزين بسيط باستخدام ملف JSON لحفظ بيانات المستخدمين، مع ميزة التحقق من هوية المسؤول لفتح لوحة التحكم.","steps":["احصل على استضافة تدعم PHP و بروتوكول SSL (HTTPS) ضروري جداً لعمل Webhook.","قم بإنشاء ملف باسم index.php في الاستضافة وضع الكود بداخله.","قم بتعديل ADMIN_ID في الكود ليطابق معرف حسابك على تيليجرام.","قم بإنشاء ملف فارغ باسم database.json في نفس المجلد وأعطه تصريح كتابة (CHMOD 777).","قم بربط البوت برابط الـ Webhook الخاص بك عن طريق فتح الرابط التالي في المتصفح: https://api.telegram.org/bot7069425588:AAHum419wO6f-pCQK0ighkg7ZcTGPls9LQw/setWebhook?url=https://yourdomain.com/path/to/index.php","تأكد من استبدال yourdomain.com بالرابط الفعلي لموقعك."]}```

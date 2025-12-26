@@ -1,104 +1,159 @@
 <?php
+http_response_code(200);
+date_default_timezone_set("Africa/Cairo");
 
-/**
- * اسم البوت: MyAwesomeBot
- * الوصف: بوت تيليجرام متطور يدعم الرد الآلي، تحليل الصور، ولوحة تحكم بسيطة.
- */
+/* ========= CONFIG ========= */
+$BOT_TOKEN = getenv("BOT_TOKEN");
+$DASH_SECRET = "SUPER_ADMIN_2025";
 
-// إعدادات التوكن والمعرفات الأساسية
-define('API_KEY', '7069425588:AAHum419wO6f-pCQK0ighkg7ZcTGPls9LQw');
-define('ADMIN_ID', 12345678); // استبدل هذا بمعرفك (Chat ID)
+/* ========= FILES ========= */
+$CONTENT = "content.json";
+$SCHEDULE = "schedule.json";
+$TARGETS = "targets.json";
+$LOGS = "publish_logs.json";
 
-// استقبال البيانات القادمة من تيليجرام
-$update = json_decode(file_get_contents('php://input'));
-if (!$update) exit;
-
-$message = $update->message ?? null;
-$chat_id = $message->chat->id ?? null;
-$text = $message->text ?? '';
-$photo = $message->photo ?? null;
-$from_id = $message->from->id ?? null;
-
-/**
- * وظيفة لإرسال الطلبات إلى تيليجرام باستخدام cURL
- */
-function botRequest($method, $datas = []) {
-    $url = "https://api.telegram.org/bot" . API_KEY . "/" . $method;
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $datas);
-    $res = curl_exec($ch);
-    if (curl_error($ch)) {
-        return (object) ['ok' => false, 'error' => curl_error($ch)];
-    }
-    curl_close($ch);
-    return json_decode($res);
+/* ========= HELPERS ========= */
+function load($f){
+    if(!file_exists($f)) file_put_contents($f,"[]");
+    return json_decode(file_get_contents($f),true);
 }
-
-/**
- * حفظ البيانات في ملف JSON
- */
-function saveData($userId, $data) {
-    $db = json_decode(file_get_contents('database.json'), true) ?: [];
-    $db[$userId] = $data;
-    file_put_contents('database.json', json_encode($db));
+function save($f,$d){
+    file_put_contents($f,json_encode($d,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));
 }
-
-// --- معالجة الأوامر ---
-
-if ($text == '/start') {
-    botRequest('sendMessage', [
-        'chat_id' => $chat_id,
-        'text' => "أهلاً بك في MyAwesomeBot! 🤖\nأنا بوت ذكي أستطيع الرد تلقائياً وتحليل الصور.",
-        'reply_markup' => json_encode([
-            'keyboard' => [
-                [['text' => 'قائمة الأوامر'], ['text' => 'معلوماتي']]
-            ],
-            'resize_keyboard' => true
+function send($chat,$text){
+    global $BOT_TOKEN;
+    file_get_contents(
+        "https://api.telegram.org/bot$BOT_TOKEN/sendMessage?".
+        http_build_query([
+            "chat_id"=>$chat,
+            "text"=>$text,
+            "parse_mode"=>"HTML"
         ])
-    ]);
-    saveData($from_id, ['last_seen' => time(), 'username' => $message->from->username ?? 'Unknown']);
+    );
 }
 
-elseif ($text == '/help' || $text == 'قائمة الأوامر') {
-    botRequest('sendMessage', [
-        'chat_id' => $chat_id,
-        'text' => "الأوامر المتاحة:\n/start - بدء البوت\n/help - عرض التعليمات\nأرسل صورة لتحليلها\nلوحة التحكم (للمسؤول فقط)"
-    ]);
+/* ========= DASHBOARD ========= */
+if($_SERVER["REQUEST_METHOD"]==="GET"){
+    if(!isset($_GET["admin"]) || $_GET["admin"]!==$DASH_SECRET){
+        exit("Access Denied");
+    }
+
+    $content = load($CONTENT);
+    $schedule = load($SCHEDULE);
+    $targets = load($TARGETS);
+
+    /* ADD CONTENT */
+    if(isset($_POST["add_content"])){
+        $content[]=[
+            "id"=>time(),
+            "text"=>$_POST["text"]
+        ];
+        save($CONTENT,$content);
+        header("Location:?admin=".$_GET["admin"]); exit;
+    }
+
+    /* ADD TARGET */
+    if(isset($_POST["add_target"])){
+        $targets[]=[
+            "id"=>$_POST["chat_id"],
+            "name"=>$_POST["name"]
+        ];
+        save($TARGETS,$targets);
+        header("Location:?admin=".$_GET["admin"]); exit;
+    }
+
+    /* ADD SCHEDULE */
+    if(isset($_POST["add_schedule"])){
+        $schedule[]=[
+            "id"=>time(),
+            "content_id"=>$_POST["content_id"],
+            "type"=>$_POST["type"], // daily / weekly / monthly / once
+            "time"=>$_POST["time"],
+            "day"=>$_POST["day"] ?? null,
+            "date"=>$_POST["date"] ?? null,
+            "last_run"=>""
+        ];
+        save($SCHEDULE,$schedule);
+        header("Location:?admin=".$_GET["admin"]); exit;
+    }
+
+    /* UI */
+    echo "<h2>📿 المحتوى</h2>
+    <form method='post'>
+    <textarea name='text' required></textarea><br>
+    <button name='add_content'>إضافة منشور</button>
+    </form>";
+
+    echo "<h2>📢 القنوات / الجروبات</h2>
+    <form method='post'>
+    <input name='chat_id' placeholder='-100xxxx أو @channel' required>
+    <input name='name' placeholder='الاسم' required>
+    <button name='add_target'>إضافة</button>
+    </form>";
+
+    echo "<h2>⏰ الجدولة</h2>
+    <form method='post'>
+    <select name='content_id'>";
+    foreach($content as $c){
+        echo "<option value='{$c['id']}'>".substr($c["text"],0,30)."</option>";
+    }
+    echo "</select>
+    <select name='type'>
+      <option value='daily'>يومي</option>
+      <option value='weekly'>أسبوعي</option>
+      <option value='monthly'>شهري</option>
+      <option value='once'>مرة واحدة</option>
+    </select>
+    <input type='time' name='time' required>
+    <input type='number' name='day' placeholder='يوم الأسبوع/الشهر'>
+    <input type='date' name='date'>
+    <button name='add_schedule'>حفظ</button>
+    </form>";
+
+    exit;
 }
 
-// --- تحليل الصور ---
-elseif ($photo) {
-    $file_id = end($photo)->file_id;
-    botRequest('sendMessage', [
-        'chat_id' => $chat_id,
-        'text' => "لقد استلمت صورتك! 🖼️\nمعرف الملف (File ID): \n`$file_id`",
-        'parse_mode' => 'Markdown'
-    ]);
-}
+/* ========= SCHEDULER ========= */
+$nowTime = date("H:i");
+$today = date("Y-m-d");
+$dayWeek = date("w");
+$dayMonth = date("j");
 
-// --- الرد الآلي ---
-elseif ($text == 'السلام عليكم') {
-    botRequest('sendMessage', ['chat_id' => $chat_id, 'text' => 'وعليكم السلام ورحمة الله وبركاته، كيف يمكنني مساعدتك؟']);
-}
+$content = load($CONTENT);
+$schedule = load($SCHEDULE);
+$targets = load($TARGETS);
+$logs = load($LOGS);
 
-// --- لوحة التحكم (للمسؤول) ---
-elseif ($text == 'لوحة تحكم' && $from_id == ADMIN_ID) {
-    $users = count(json_decode(file_get_contents('database.json'), true) ?: []);
-    botRequest('sendMessage', [
-        'chat_id' => $chat_id,
-        'text' => "مرحباً أيها المدير! 🛠️\nعدد المستخدمين المخزنين: $users"
-    ]);
-}
+foreach($schedule as &$s){
+    if($s["time"]!==$nowTime) continue;
+    if($s["last_run"]==$today) continue;
 
-// --- ميزة الصدى (Echo) كخيار افتراضي ---
-else {
-    if ($text != '') {
-        botRequest('sendMessage', [
-            'chat_id' => $chat_id,
-            'text' => "لقد قلت: $text"
-        ]);
+    $run=false;
+    if($s["type"]=="daily") $run=true;
+    if($s["type"]=="weekly" && $s["day"]==$dayWeek) $run=true;
+    if($s["type"]=="monthly" && $s["day"]==$dayMonth) $run=true;
+    if($s["type"]=="once" && $s["date"]==$today) $run=true;
+
+    if(!$run) continue;
+
+    foreach($content as $c){
+        if($c["id"]==$s["content_id"]){
+            foreach($targets as $t){
+                send($t["id"],$c["text"]);
+            }
+            $s["last_run"]=$today;
+            $logs[]=date("Y-m-d H:i")." | Published {$s['id']}";
+        }
     }
 }
-?>","explanation":"هذا السكريبت هو نظام متكامل لبوت تيليجرام بلغة PHP. يعتمد على تقنية Webhook لاستقبال التحديثات فورياً. يتضمن وظيفة إرسال عبر cURL لضمان الأمان والسرعة. السكريبت يدعم الأوامر الأساسية (/start و /help)، ويحتوي على منطق للرد الآلي على كلمات محددة، ومعالجة الصور من خلال استخراج الـ file_id الخاص بها. كما يتضمن نظام تخزين بسيط باستخدام ملف JSON لحفظ بيانات المستخدمين، مع ميزة التحقق من هوية المسؤول لفتح لوحة التحكم.","steps":["احصل على استضافة تدعم PHP و بروتوكول SSL (HTTPS) ضروري جداً لعمل Webhook.","قم بإنشاء ملف باسم index.php في الاستضافة وضع الكود بداخله.","قم بتعديل ADMIN_ID في الكود ليطابق معرف حسابك على تيليجرام.","قم بإنشاء ملف فارغ باسم database.json في نفس المجلد وأعطه تصريح كتابة (CHMOD 777).","قم بربط البوت برابط الـ Webhook الخاص بك عن طريق فتح الرابط التالي في المتصفح: https://api.telegram.org/bot7069425588:AAHum419wO6f-pCQK0ighkg7ZcTGPls9LQw/setWebhook?url=https://yourdomain.com/path/to/index.php","تأكد من استبدال yourdomain.com بالرابط الفعلي لموقعك."]}```
+save($SCHEDULE,$schedule);
+save($LOGS,$logs);
+
+/* ========= TELEGRAM ========= */
+$update=json_decode(file_get_contents("php://input"),true);
+if(!$update) exit;
+
+if(isset($update["message"])){
+    send($update["message"]["chat"]["id"],
+    "🤖 البوت يعمل تلقائيًا\n⏰ النشر يتم حسب الجدولة");
+}
